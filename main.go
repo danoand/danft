@@ -30,7 +30,7 @@ func prtHelp() {
 	fmt.Printf("03 Download a file from the cloud: ' danft get <filename> '\n")
 	fmt.Printf("04 Download the last file uploaded: ' danft get '\n")
 	fmt.Printf("05 NOTE: If your parameters include embedded spaces, remember to enclose those parameters in quotes\n")
-	fmt.Printf("----- 'sendmsg' Help -----\n\n")
+	fmt.Printf("----- 'danft' Help -----\n\n")
 }
 
 func upload(file string) (err error) {
