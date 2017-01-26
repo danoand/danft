@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/danoand/utils"
 )
 
 var (
@@ -18,8 +21,10 @@ var (
 	tmp, fpath, fbase string
 	args              []string
 
-	apiUpEndPt = "https://danoutils.danocloud.com/uploadafile"
-	apiDnEndPt = "https://danoutils.danocloud.com/apidownload/"
+	apiUpEndPt   = "https://danoutils.danocloud.com/uploadafile"
+	apiDnEndPt   = "https://danoutils.danocloud.com/apidownload/"
+	apiClUpEndPt = "https://danoutils.danocloud.com/pasteaclip"
+	apiClDnEndPt = "https://danoutils.danocloud.com/apigetclip"
 )
 
 // prtHelp prints a short help blurb to standard out
@@ -27,9 +32,12 @@ func prtHelp() {
 	fmt.Printf("\n----- 'danft' \"Dan File Transfer\" Help -----\n")
 	fmt.Printf("01 Use 'danft' to quickly upload or download a file to/from the cloud\n")
 	fmt.Printf("02 Upload a file to the cloud: ' danft put <filepath> '\n")
-	fmt.Printf("03 Download a file from the cloud: ' danft get <filename> '\n")
-	fmt.Printf("04 Download the last file uploaded: ' danft get '\n")
-	fmt.Printf("05 NOTE: If your parameters include embedded spaces, remember to enclose those parameters in quotes\n")
+	fmt.Printf("03 Upload a clip to the cloud: ' danft putclip <string of text in quotes> '\n")
+	fmt.Printf("04 Download a file from the cloud: ' danft get <filename> '\n")
+	fmt.Printf("05 Download the last file uploaded: ' danft get '\n")
+	fmt.Printf("06 Download the last text clip: ' danft getclip '\n")
+	fmt.Printf("07 NOTE: If your parameters include embedded spaces, remember to enclose those parameters in quotes\n")
+	fmt.Printf("08 NOTE: Use the web application if your clip includes newline characters\n")
 	fmt.Printf("----- 'danft' Help -----\n\n")
 }
 
@@ -69,6 +77,55 @@ func upload(file string) (err error) {
 	res, err := client.Do(req)
 	if err != nil {
 		return
+	}
+
+	// Check the response
+	if res.StatusCode != http.StatusOK {
+		err = fmt.Errorf("bad status: %s", res.Status)
+	}
+
+	return
+}
+
+func uploadclip(clp string) (err error) {
+	var fErr error
+	var mapClp = map[string]string{"clip": clp}
+	var mapStr string
+
+	// Validate the clip data
+	if len(clp) == 0 {
+		// Error - empty clip
+		fmt.Printf("ERROR: your clip has no data.  Try again\n")
+		return fmt.Errorf("no clip data")
+	}
+
+	// Convert the map to a string value
+	if mapStr, _, fErr = utils.ToJSON(mapClp); fErr != nil {
+		// Error occurred converting the map object to a string value
+		fmt.Printf("ERROR: error converting a map to a string. See: %v\n", fErr)
+		return fmt.Errorf("clip data can't be converted to a string")
+	}
+
+	// Create a buffer and write the clip data
+	var b bytes.Buffer
+	b.WriteString(mapStr)
+
+	// Now that you have a form, you can submit it to your handler.
+	req, fErr := http.NewRequest("POST", apiClUpEndPt, &b)
+	if fErr != nil {
+		fmt.Printf("ERROR: error creating an HTTP request. See: %v\n", fErr)
+		return fmt.Errorf("error creating an HTTP request")
+	}
+	// Don't forget to set the content type, this will contain the boundary.
+	req.Header.Set("X-Upload-Key", "Jt8iZKQaBphsnpjC")
+	req.Header.Set("Content-Type", "application/json")
+
+	// Submit the request
+	client := &http.Client{}
+	res, fErr := client.Do(req)
+	if fErr != nil {
+		fmt.Printf("ERROR: error executing the client HTTP request. See: %v\n", fErr)
+		return fmt.Errorf("error executing an HTTP request")
 	}
 
 	// Check the response
@@ -152,6 +209,52 @@ func download(file string) error {
 	return err
 }
 
+// downClip downloads the last clip inserted into the database
+func downClip() (string, error) {
+	var ferr error
+	var tBytes []byte
+	var retStr string
+	var req *http.Request
+	var res *http.Response
+
+	// Create a new HTTP client request
+	req, ferr = http.NewRequest("GET", apiClDnEndPt, nil)
+	if err != nil {
+		log.Printf("ERROR: error occurred creating a new client HTTP request. See: %v\n", ferr)
+		return retStr, ferr
+	}
+
+	// Set a header for authentication
+	req.Header.Set("X-Upload-Key", "Jt8iZKQaBphsnpjC")
+
+	// Submit the request
+	client := &http.Client{}
+	res, ferr = client.Do(req)
+	if ferr != nil {
+		log.Printf("ERROR: error occurred creating a new client HTTP request. See: %v\n", ferr)
+		return retStr, ferr
+	}
+
+	// Remember to close the response body
+	defer res.Body.Close()
+
+	if tBytes, ferr = ioutil.ReadAll(res.Body); ferr != nil {
+		// Error occurred reading the response contents
+		fmt.Printf("ERROR: error occurred readingt the clip response. See: %v\n", ferr)
+		return retStr, ferr
+	}
+
+	retStr = string(tBytes)
+
+	// Is the response body empty?
+	if len(retStr) == 0 {
+		return "", nil
+	}
+
+	// Have a non-empty response
+	return retStr, nil
+}
+
 func main() {
 	// Grab the command line arguments
 	args = os.Args
@@ -170,9 +273,9 @@ func main() {
 	}
 
 	// Validate the non-help operands
-	if tmp != "put" && tmp != "get" {
+	if tmp != "put" && tmp != "putclip" && tmp != "get" && tmp != "getclip" {
 		// Invalid command operand - not "help", "h", "put", or "get"
-		fmt.Printf("ERROR: Invalid operand. Use 'help', 'h', 'put', or 'get'\n")
+		fmt.Printf("ERROR: Invalid operand. Use 'help', 'h', 'put', 'putclip' or 'get'\n")
 		goto WrapUp
 	}
 
@@ -221,6 +324,45 @@ func main() {
 		}
 
 		fmt.Printf("INFO: file [%v] has been successfully uploaded.\n", fpath)
+
+	// CASE: upload a clip
+	case "putclip":
+		// Is there a specified clip?
+		if len(args) == 2 {
+			// Error - don't have a filepath or filename element
+			fmt.Printf("ERROR: missing clip to be uploaded.  Please try again.\n")
+			goto WrapUp
+		}
+
+		// Upload the specified clip
+		if err = uploadclip(args[2]); err != nil {
+			fmt.Printf("ERROR: error occurred uploading the specified clip.  See: %v\n", err)
+			goto WrapUp
+		}
+
+		fmt.Printf("INFO: your clip has been successfully uploaded.\n")
+
+	// CASE: get the last clip
+	case "getclip":
+		var getClp string
+
+		// Trigger the download
+		if getClp, err = downClip(); err != nil {
+			// Error occurred downloading a clip
+			fmt.Printf("ERROR: Error occurred downloading a clip. See: %v\n", err)
+			goto WrapUp
+		}
+
+		if len(getClp) == 0 {
+			// Empty clip
+			fmt.Printf("INFO: Your clip is empty or blank.\n")
+			goto WrapUp
+		}
+
+		// Print out the clip
+		fmt.Printf("------------\n")
+		fmt.Printf("%v", getClp)
+		fmt.Printf("------------\n")
 	}
 
 WrapUp:
