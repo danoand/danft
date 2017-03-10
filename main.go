@@ -30,10 +30,10 @@ var (
 // prtHelp prints a short help blurb to standard out
 func prtHelp() {
 	fmt.Printf("\n----- 'danft' \"Dan File Transfer\" Help -----\n")
-	fmt.Printf("01 Use 'danft' to quickly upload or download a file to/from the cloud\n")
+	fmt.Printf("01 Use 'danft' to quickly upload or download a file or 'clip' to/from the cloud\n")
 	fmt.Printf("02 Upload a file to the cloud: ' danft put <filepath> '\n")
 	fmt.Printf("03 Upload a clip to the cloud: ' danft putclip <string of text in quotes> '\n")
-	fmt.Printf("04 Download a file from the cloud: ' danft get <filename> '\n")
+	fmt.Printf("04 Download a file from the cloud: ' danft get <filename> <OPTIONAL new filename>'\n")
 	fmt.Printf("05 Download the last file uploaded: ' danft get '\n")
 	fmt.Printf("06 Download the last text clip: ' danft getclip '\n")
 	fmt.Printf("07 NOTE: If your parameters include embedded spaces, remember to enclose those parameters in quotes\n")
@@ -137,9 +137,9 @@ func uploadclip(clp string) (err error) {
 }
 
 // download downloads a file from the Danocloud
-func download(file string) error {
+func download(file, newname string) error {
 	var (
-		err           error
+		ferr          error
 		fname, dFname string
 		tURL          string
 		req           *http.Request
@@ -160,10 +160,10 @@ func download(file string) error {
 	tURL = apiDnEndPt + fname
 
 	// Now that you have a form, you can submit it to your handler.
-	req, err = http.NewRequest("GET", tURL, nil)
-	if err != nil {
-		log.Printf("ERROR: error occurred creating a new client HTTP request. See: %v\n", err)
-		return err
+	req, ferr = http.NewRequest("GET", tURL, nil)
+	if ferr != nil {
+		log.Printf("ERROR: error occurred creating a new client HTTP request. See: %v\n", ferr)
+		return ferr
 	}
 
 	// Set a header for authentication
@@ -171,10 +171,10 @@ func download(file string) error {
 
 	// Submit the request
 	client := &http.Client{}
-	res, err = client.Do(req)
-	if err != nil {
-		log.Printf("ERROR: error occurred creating a new client HTTP request. See: %v\n", err)
-		return err
+	res, ferr = client.Do(req)
+	if ferr != nil {
+		log.Printf("ERROR: error occurred creating a new client HTTP request. See: %v\n", ferr)
+		return ferr
 	}
 
 	// Remember to close the response body
@@ -183,30 +183,35 @@ func download(file string) error {
 	// Get the download file's filename
 	if dFname = res.Header.Get("X-Filename"); len(dFname) == 0 {
 		// Error occurred - don't have the filename
-		log.Printf("ERROR: error occurred fetching the response header. See: %v\n", err)
-		return err
+		log.Printf("ERROR: error occurred fetching the response header. See: %v\n", ferr)
+		return ferr
+	}
+
+	// Use a new filename if supplied
+	if len(newname) > 1 {
+		dFname = newname
 	}
 
 	// Create the download file in the local directory
-	if dFile, err = os.Create(dFname); err != nil {
+	if dFile, ferr = os.Create(dFname); ferr != nil {
 		// Error occurred attempting to create a local file (to house the download)
-		log.Printf("ERROR: error occurred creating a local file. See: %v\n", err)
-		return err
+		log.Printf("ERROR: error occurred creating a local file. See: %v\n", ferr)
+		return ferr
 	}
 
 	// Remember to close the file
 	defer dFile.Close()
 
 	// Copy the response file data to created file
-	if num, err = io.Copy(dFile, res.Body); err != nil {
+	if num, ferr = io.Copy(dFile, res.Body); ferr != nil {
 		// Error occurred attempting to create a local file (to house the download)
-		log.Printf("ERROR: error occurred writing the response file data to disk. See: %v\n", err)
-		return err
+		log.Printf("ERROR: error occurred writing the response file data to disk. See: %v\n", ferr)
+		return ferr
 	}
 
 	log.Printf("INFO: wrote %v bytes of file %v to the local disk\n", num, dFname)
 
-	return err
+	return ferr
 }
 
 // downClip downloads the last clip inserted into the database
@@ -284,14 +289,19 @@ func main() {
 
 	// CASE: download a file
 	case "get":
-		var gName string
+		var gName, diskName string
 		if len(args) >= 3 {
 			// A filename to be "get"ed has been specified
 			gName = args[2]
 		}
 
+		if len(args) >= 4 {
+			// A new filename has been specified
+			diskName = args[3]
+		}
+
 		// Trigger the download
-		if err = download(gName); err != nil {
+		if err = download(gName, diskName); err != nil {
 			// Error occurred downloading the file
 			fmt.Printf("ERROR: error occurred downloading the file.  See: %v Please try again.\n", err)
 			goto WrapUp
