@@ -25,6 +25,7 @@ var (
 	apiDnEndPt   = "https://danoutils.danocloud.com/apidownload/"
 	apiClUpEndPt = "https://danoutils.danocloud.com/pasteaclip"
 	apiClDnEndPt = "https://danoutils.danocloud.com/apigetclip"
+	apiKey       = "REPLACE_ME_FROM_1PASSWORD"
 )
 
 // prtHelp prints a short help blurb to standard out
@@ -69,7 +70,7 @@ func upload(file string) (err error) {
 		return
 	}
 	// Don't forget to set the content type, this will contain the boundary.
-	req.Header.Set("X-Upload-Key", "Jt8iZKQaBphsnpjC")
+	req.Header.Set("X-Upload-Key", apiKey)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 
 	// Submit the request
